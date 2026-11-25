@@ -35,7 +35,29 @@ def validate(text):
     return text
 
 
-def main():
+def verify_entry(path, entry):
+    """Post-write gate: re-read entry.txt and re-validate every rule.
+
+    Checks the file is byte-identical to the entry, still 1-200 chars,
+    a single line, and free of leading/trailing whitespace. Raises
+    SystemExit on any mismatch so a bad write never passes silently.
+    """
+    with open(path, "rb") as f:
+        raw = f.read()
+    if raw != entry.encode("utf-8"):
+        raise SystemExit("entry.txt does not match the entry byte-for-byte")
+    if len(raw) != len(entry.encode("utf-8")):
+        raise SystemExit("entry.txt byte length changed: %d" % len(raw))
+    text = raw.decode("utf-8")
+    validate(text)
+    if text != text.strip():
+        raise SystemExit("entry.txt has leading/trailing whitespace")
+    if "\n" in text or "\r" in text:
+        raise SystemExit("entry.txt is not a single line")
+    return len(raw)
+
+
+def run():
     entry = validate(ENTRY)
     out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
     os.makedirs(out_dir, exist_ok=True)
@@ -43,15 +65,11 @@ def main():
     # Write exactly the line, no trailing newline.
     with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(entry)
-    # Re-read and verify byte-identical output.
-    with open(path, "rb") as f:
-        raw = f.read()
-    if raw != entry.encode("utf-8"):
-        raise SystemExit("entry.txt does not match the entry byte-for-byte")
-    validate(raw.decode("utf-8"))
-    print("wrote %d bytes to %s" % (len(raw), path))
+    # Re-read and verify byte-identical output before reporting success.
+    size = verify_entry(path, entry)
+    print("wrote %d bytes to %s" % (size, path))
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run())
